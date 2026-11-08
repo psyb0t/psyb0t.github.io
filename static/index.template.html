@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>psyb0t: open source software by Ciprian Mandache</title>
+<meta name="description" content="Ciprian Mandache (psyb0t) writes self-hosted tools, trading infrastructure, AI agent tooling and Go libraries. Every public project, sorted by category.">
+<link rel="canonical" href="https://psyb0t.github.io/">
+<meta property="og:type" content="profile">
+<meta property="og:url" content="https://psyb0t.github.io/">
+<meta property="og:title" content="psyb0t: open source software by Ciprian Mandache">
+<meta property="og:description" content="Self-hosted tools, trading infrastructure, AI agent tooling and Go libraries. Every public project, sorted by category.">
+<meta property="og:image" content="https://github.com/psyb0t.png">
+<meta name="twitter:card" content="summary">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="https://github.com/psyb0t.png">
+<link rel="alternate" type="application/rss+xml" title="Ciprian Mandache's blog" href="https://ciprian.51k.eu/feed/">
+<link rel="stylesheet" href="style.css">
+<script type="application/ld+json">{{json_ld}}</script>
+</head>
+<body>
+<header class="hero">
+  <img class="avatar" src="https://github.com/psyb0t.png?size=192" alt="psyb0t avatar" width="96" height="96">
+  <div>
+    <h1>psyb0t</h1>
+    <p class="tagline">Ciprian Mandache. Mostly writing code that does stuff.</p>
+  </div>
+</header>
+
+<main>
+<section id="about">
+  <h2>About</h2>
+  <p>I build software I actually run: self-hosted services, trading infrastructure for MetaTrader and Interactive Brokers, plumbing for AI coding agents, and Go libraries for the boring parts. Most of it ships as a Docker image with an HTTP API and an MCP server, so a script, a person or an agent can drive it the same way.</p>
+  <p>Everything below is open source. The long stories about why each one exists, and what broke along the way, are on <a href="https://ciprian.51k.eu/">my blog</a>.</p>
+  <ul class="links">{{links}}</ul>
+  <p class="stats">{{projects}} public projects in {{category_count}} categories, {{stars}} stars between them.</p>
+</section>
+
+<section id="top">
+  <h2>Most starred</h2>
+  <div class="cards">{{top_cards}}</div>
+</section>
+
+{{posts}}
+
+<section id="projects">
+  <h2>All projects by category</h2>
+  <nav aria-label="Categories"><ul class="category-nav">{{category_nav}}</ul></nav>
+  {{category_sections}}
+</section>
+
+</main>
+
+<footer>
+  <p>Built from the GitHub API on <time datetime="{{built_iso}}">{{built}}</time>. <a href="https://github.com/psyb0t/psyb0t.github.io">Source</a></p>
+</footer>
+</body>
+</html>

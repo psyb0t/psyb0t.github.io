@@ -1,0 +1,10 @@
+_site/
+.shots/
+.logs/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+git-update.sh
+git-update.sh.debot
+.telemetry/
