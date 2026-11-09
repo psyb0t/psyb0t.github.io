@@ -25,6 +25,7 @@ class FakeRepo:
     language: str = "Go"
     stars: int = 0
     forks: int = 0
+    is_fork: bool = False
     url: str = ""
 
     def __post_init__(self) -> None:
@@ -186,3 +187,13 @@ def test_llms_txt_lists_links_posts_and_every_project_with_its_docs():
         "llms.txt: https://psyb0t.github.io/mt5-httpapi/llms.txt."
     ) in text
     assert "- [bare](https://github.com/psyb0t/bare)\n" in text
+
+
+def test_listed_forks_are_marked_on_the_page_and_in_llms_txt():
+    fork = FakeRepo("go-workflows", description="Durable workflows", is_fork=True)
+    categories = [FakeCategory("Go", [fork])]
+
+    assert '<span title="fork of another project">fork</span>' in page(categories)
+    assert "- [go-workflows](https://github.com/psyb0t/go-workflows): Fork. Durable workflows." in (
+        build.render_llms(categories, {}, [], [])
+    )

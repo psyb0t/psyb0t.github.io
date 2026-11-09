@@ -201,6 +201,8 @@ def render_facts(repo: Any) -> str:
     facts = []
     if repo.language:
         facts.append(f'<span class="lang">{esc(repo.language)}</span>')
+    if getattr(repo, "is_fork", False):
+        facts.append('<span title="fork of another project">fork</span>')
     if repo.stars:
         facts.append(f'<span title="stars">★ {repo.stars}</span>')
     if repo.forks:
@@ -344,7 +346,8 @@ def render_llms(
         "",
         f"> {SUMMARY}",
         "",
-        f"Every public, non-fork repository on github.com/{USER}. Each entry links the "
+        f"Every public repository I maintain on github.com/{USER}; listed forks say so. "
+        "Each entry links the "
         "repository; projects with a documentation site also link it, and its own llms.txt "
         "when it has one.",
         "",
@@ -358,7 +361,8 @@ def render_llms(
     for category in categories:
         lines += ["", f"## {category.title}", ""]
         for repo in category.repos:
-            notes = [repo.description.strip()] if repo.description else []
+            notes = ["Fork."] if getattr(repo, "is_fork", False) else []
+            notes += [repo.description.strip()] if repo.description else []
             extra = extras.get(repo.name)
             if extra and extra.has_pages:
                 notes.append(f"Docs: {docs_url(repo.name)}")
