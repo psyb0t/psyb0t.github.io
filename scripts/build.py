@@ -266,7 +266,7 @@ def json_ld() -> str:
                 "@type": "WebSite",
                 "@id": f"{SITE_URL}#website",
                 "url": SITE_URL,
-                "name": f"{PERSON['handle']}: open source software by {PERSON['name']}",
+                "name": f"{PERSON['name']} ({PERSON['handle']}): open source software",
                 "author": {"@id": f"{SITE_URL}#person"},
             },
         ],
