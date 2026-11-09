@@ -47,6 +47,11 @@ USER_AGENT = "psyb0t.github.io-build"
 
 # The root sitemap lists this page, and the sitemap index points at it plus
 # every project docs site that serves its own sitemap.
+LLMS_TXT = "llms.txt"
+SUMMARY = (
+    "Docker images, MCP servers, MetaTrader and IBKR APIs, AI agent tooling and Go "
+    "libraries I actually run. Every public repo, sorted by category."
+)
 SITEMAP_INDEX = "sitemap.xml"
 SITEMAP_ROOT = "sitemap-root.xml"
 SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
@@ -145,18 +150,23 @@ def docs_url(name: str) -> str:
     return f"{SITE_URL}{name}/"
 
 
-def live_doc_sitemaps(names: list[str]) -> list[str]:
-    """Sitemaps of the project docs sites that actually serve one."""
+def live_doc_files(names: list[str], filename: str) -> list[str]:
+    """URLs of `filename` on the project docs sites that actually serve it."""
     found = []
     for name in names:
-        url = f"{docs_url(name)}sitemap.xml"
+        url = f"{docs_url(name)}{filename}"
         try:
             http_get(url)
         except urllib.error.URLError as err:
-            logger.info("docs sitemap missing", extra={"url": url, "err": str(err)})
+            logger.info("docs file missing", extra={"url": url, "err": str(err)})
             continue
         found.append(url)
     return found
+
+
+def live_doc_sitemaps(names: list[str]) -> list[str]:
+    """Sitemaps of the project docs sites that actually serve one."""
+    return live_doc_files(names, "sitemap.xml")
 
 
 def repo_links(repo: Any, extras: Extras | None) -> list[tuple[str, str]]:
@@ -324,6 +334,41 @@ def render_sitemaps(doc_sitemaps: list[str], built: dt.datetime) -> tuple[str, s
     return index, root
 
 
+def render_llms(
+    categories: list[Any], extras: dict[str, Extras], posts: list[Post], doc_llms: list[str]
+) -> str:
+    """The llms.txt index: who I am, where to find me, and every project by category."""
+    have_llms = set(doc_llms)
+    lines = [
+        f"# {PERSON['name']} ({PERSON['handle']})",
+        "",
+        f"> {SUMMARY}",
+        "",
+        f"Every public, non-fork repository on github.com/{USER}. Each entry links the "
+        "repository; projects with a documentation site also link it, and its own llms.txt "
+        "when it has one.",
+        "",
+        "## Links",
+        "",
+        *(f"- [{label}]({url})" for label, url in LINKS),
+    ]
+    if posts:
+        lines += ["", "## Latest blog posts", ""]
+        lines += [f"- [{p.title}]({p.url}): {p.published.isoformat()}" for p in posts]
+    for category in categories:
+        lines += ["", f"## {category.title}", ""]
+        for repo in category.repos:
+            notes = [repo.description.strip()] if repo.description else []
+            extra = extras.get(repo.name)
+            if extra and extra.has_pages:
+                notes.append(f"Docs: {docs_url(repo.name)}")
+                if f"{docs_url(repo.name)}{LLMS_TXT}" in have_llms:
+                    notes.append(f"llms.txt: {docs_url(repo.name)}{LLMS_TXT}")
+            note = " ".join(n if n.endswith(".") else f"{n}." for n in notes)
+            lines.append(f"- [{repo.name}]({repo.url})" + (f": {note}" if note else ""))
+    return "\n".join(lines) + "\n"
+
+
 def robots_txt() -> str:
     return f"User-agent: *\nAllow: /\n\nSitemap: {SITE_URL}{SITEMAP_INDEX}\n"
 
@@ -338,7 +383,9 @@ def build(update: ModuleType, out: Path) -> None:
     top = update.top_repos(repos)
     posts = fetch_posts()
     listed = {r.name for c in categories for r in c.repos}
-    doc_sitemaps = live_doc_sitemaps(sorted(n for n, e in extras.items() if e.has_pages and n in listed))
+    doc_sites = sorted(n for n, e in extras.items() if e.has_pages and n in listed)
+    doc_sitemaps = live_doc_sitemaps(doc_sites)
+    doc_llms = live_doc_files(doc_sites, LLMS_TXT)
     built = dt.datetime.now(dt.UTC).replace(microsecond=0)
 
     page = render_page(top, categories, extras, posts, built)
@@ -351,6 +398,7 @@ def build(update: ModuleType, out: Path) -> None:
     (out / SITEMAP_INDEX).write_text(index, encoding="utf-8")
     (out / SITEMAP_ROOT).write_text(root, encoding="utf-8")
     (out / "robots.txt").write_text(robots_txt(), encoding="utf-8")
+    (out / LLMS_TXT).write_text(render_llms(categories, extras, posts, doc_llms), encoding="utf-8")
     for path in STATIC_DIR.iterdir():
         if path.name != TEMPLATE.name:
             shutil.copy2(path, out / path.name)
@@ -362,6 +410,7 @@ def build(update: ModuleType, out: Path) -> None:
             "top": len(top),
             "posts": len(posts),
             "doc_sitemaps": len(doc_sitemaps),
+            "doc_llms": len(doc_llms),
         },
     )
 

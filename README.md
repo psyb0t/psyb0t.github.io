@@ -6,7 +6,7 @@ I don't maintain the project list by hand. The build pulls it from the GitHub AP
 
 A GitHub Action rebuilds and deploys it on every push, four times a day, and whenever I hit the button. If the blog feed is down, the blog section just disappears. If the GitHub API is down, the build fails and the live site stays as it was.
 
-Besides `index.html`, the build writes a `sitemap.xml` that points at this page and at the sitemap of every project docs site under psyb0t.github.io, so one sitemap submission covers all of them. It also copies whatever is in [`static/`](static/), which is the stylesheet and the IndexNow key. The page carries the Google Analytics tag, which is also how Search Console verifies the site.
+Besides `index.html`, the build writes a `sitemap.xml` that points at this page and at the sitemap of every project docs site under psyb0t.github.io, so one sitemap submission covers all of them. It also writes an `llms.txt` that lists every project with its docs site and that site's own `llms.txt`, for LLMs and agents. And it copies whatever is in [`static/`](static/), which is the stylesheet and the IndexNow key. The page carries the Google Analytics tag, which is also how Search Console verifies the site.
 
 ## Build it yourself
 

@@ -163,3 +163,26 @@ def test_only_docs_sites_that_serve_a_sitemap_are_listed(monkeypatch):
 
 def test_robots_txt_names_the_sitemap_index():
     assert "Sitemap: https://psyb0t.github.io/sitemap.xml" in build.robots_txt()
+
+
+def test_llms_txt_lists_links_posts_and_every_project_with_its_docs():
+    categories = [
+        FakeCategory("Trading", [FakeRepo("mt5-httpapi", description="MT5 over REST")]),
+        FakeCategory("Other", [FakeRepo("bare", description="")]),
+    ]
+    extras = {"mt5-httpapi": build.Extras(homepage="", has_pages=True)}
+    posts = build.parse_feed(FEED, limit=1)
+    doc_llms = ["https://psyb0t.github.io/mt5-httpapi/llms.txt"]
+
+    text = build.render_llms(categories, extras, posts, doc_llms)
+
+    assert text.startswith("# Ciprian Mandache (psyb0t)\n\n> ")
+    assert "- [Blog](https://ciprian.51k.eu/)" in text
+    assert "- [First post](https://ciprian.51k.eu/first/): 2026-10-23" in text
+    assert "## Trading" in text
+    assert (
+        "- [mt5-httpapi](https://github.com/psyb0t/mt5-httpapi): MT5 over REST. "
+        "Docs: https://psyb0t.github.io/mt5-httpapi/. "
+        "llms.txt: https://psyb0t.github.io/mt5-httpapi/llms.txt."
+    ) in text
+    assert "- [bare](https://github.com/psyb0t/bare)\n" in text

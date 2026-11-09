@@ -8,3 +8,6 @@ __pycache__/
 git-update.sh
 git-update.sh.debot
 .telemetry/
+
+# Local agent and editor settings.
+*.local.json
