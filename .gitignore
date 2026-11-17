@@ -11,3 +11,6 @@ git-update.sh.debot
 
 # Local agent and editor settings.
 *.local.json
+
+# Local plans.
+.plan/

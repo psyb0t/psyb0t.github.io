@@ -197,3 +197,189 @@ def test_listed_forks_are_marked_on_the_page_and_in_llms_txt():
     assert "- [go-workflows](https://github.com/psyb0t/go-workflows): Fork. Durable workflows." in (
         build.render_llms(categories, {}, [], [])
     )
+
+
+DESCRIPTION = "Trading tools by Ciprian Mandache (psyb0t): brokers, market data and build tools."
+
+
+def config(**categories) -> dict:
+    return {
+        "min_repos": 1,
+        "categories": {
+            title: {"slug": slug, "title": f"{title} page", "description": DESCRIPTION, "intro": "Intro."}
+            for title, slug in categories.items()
+        },
+    }
+
+
+def repos(count: int, prefix: str = "r") -> list[FakeRepo]:
+    return [FakeRepo(f"{prefix}{i}", stars=count - i) for i in range(count)]
+
+
+def test_every_configured_category_gets_one_page_and_unconfigured_ones_are_skipped(caplog):
+    categories = [FakeCategory("Trading", repos(1)), FakeCategory("New", repos(2, "n"))]
+
+    pages = build.plan_pages(categories, config(Trading="trading"))
+
+    assert [p.slug for p in pages.all()] == ["trading"]
+    assert pages.categories["Trading"].url == "https://psyb0t.github.io/projects/trading/"
+    assert "category without a page" in caplog.text
+
+
+def test_min_repos_leaves_small_categories_on_the_home_page_only():
+    cfg = config(Trading="trading", Go="go") | {"min_repos": 3}
+    categories = [FakeCategory("Trading", repos(3)), FakeCategory("Go", repos(2, "g"))]
+
+    assert [p.slug for p in build.plan_pages(categories, cfg).all()] == ["trading"]
+
+
+def test_duplicate_slugs_and_bad_descriptions_fail_the_build():
+    categories = [FakeCategory("A", repos(1)), FakeCategory("B", repos(1, "b"))]
+    with pytest.raises(build.BuildError, match="duplicate page slugs"):
+        build.plan_pages(categories, config(A="same", B="same"))
+
+    short = config(A="a")
+    short["categories"]["A"]["description"] = "Too short."
+    with pytest.raises(build.BuildError, match="characters"):
+        build.plan_pages(categories[:1], short)
+
+    anonymous = config(A="a")
+    anonymous["categories"]["A"]["description"] = (
+        "A description long enough to pass the length check, without a name."
+    )
+    with pytest.raises(build.BuildError, match="does not name"):
+        build.plan_pages(categories[:1], anonymous)
+
+
+def test_the_shipped_pages_json_is_valid_and_has_no_facets():
+    shipped = build.load_pages_config()
+
+    assert "facets" not in shipped
+    for entry in shipped["categories"].values():
+        build.check_page_text(entry["slug"], entry["description"])
+    slugs = [e["slug"] for e in shipped["categories"].values()]
+    assert len(slugs) == len(set(slugs))
+
+
+def test_the_home_page_shows_the_first_rows_and_links_the_full_category_page():
+    categories = [FakeCategory("Trading", repos(7)), FakeCategory("Go", repos(2, "g"))]
+    pages = build.plan_pages(categories, config(Trading="trading", Go="go"))
+
+    html = build.render_page([], categories, {}, [], BUILT, pages)
+
+    trading = html[html.index('id="trading"') : html.index('id="go"')]
+    assert trading.count("<li>") == build.HOME_ROWS
+    assert 'href="https://psyb0t.github.io/projects/trading/">All 7 projects: Trading page</a>' in trading
+    go = html[html.index('id="go"') :]
+    assert '<h3><a href="https://psyb0t.github.io/projects/go/">Go</a></h3>' in go
+    assert "All 2 projects" not in go
+
+
+def test_a_category_page_lists_every_repo_with_its_own_title_canonical_and_json_ld():
+    categories = [FakeCategory("Trading", repos(7)), FakeCategory("Go", repos(2, "g"))]
+    pages = build.plan_pages(categories, config(Trading="trading", Go="go"))
+
+    html = build.render_list_page(pages.categories["Trading"], pages, {}, BUILT)
+
+    assert "<title>Trading page by Ciprian Mandache (psyb0t)</title>" in html
+    assert '<link rel="canonical" href="https://psyb0t.github.io/projects/trading/">' in html
+    assert html.count("<h1>") == 1
+    assert html.count('class="name"') == 7
+    assert 'href="https://psyb0t.github.io/projects/go/">Go page</a>' in html
+    assert 'href="https://psyb0t.github.io/projects/trading/">Trading page</a>' not in html
+    assert 'href="/style.css"' in html
+    blob = re.search(r'<script type="application/ld\+json">(.*?)</script>', html, re.S)
+    assert blob
+    graph = json.loads(blob.group(1))["@graph"]
+    collection = next(g for g in graph if g["@type"] == "CollectionPage")
+    assert collection["mainEntity"]["numberOfItems"] == 7
+    crumbs = next(g for g in graph if g["@type"] == "BreadcrumbList")
+    assert [c["name"] for c in crumbs["itemListElement"]] == [
+        "Ciprian Mandache (psyb0t)",
+        "Projects",
+        "Trading page",
+    ]
+
+
+def test_the_projects_index_links_every_page():
+    categories = [FakeCategory("Trading", repos(1)), FakeCategory("Go", repos(2, "g"))]
+    pages = build.plan_pages(categories, config(Trading="trading", Go="go"))
+
+    html = build.render_projects_index(pages, BUILT)
+
+    assert '<link rel="canonical" href="https://psyb0t.github.io/projects/">' in html
+    assert ">1 project<" in html and ">2 projects<" in html
+    assert "By type" not in html
+
+
+def test_sitemap_and_llms_txt_list_the_project_pages():
+    categories = [FakeCategory("Trading", repos(1))]
+    pages = build.plan_pages(categories, config(Trading="trading"))
+
+    _, root = build.render_sitemaps([], BUILT, pages)
+    text = build.render_llms(categories, {}, [], [], pages)
+
+    assert "<loc>https://psyb0t.github.io/projects/</loc>" in root
+    assert "<loc>https://psyb0t.github.io/projects/trading/</loc>" in root
+    assert f"- [Trading page](https://psyb0t.github.io/projects/trading/): {DESCRIPTION}" in text
+
+
+def test_build_writes_the_pages_and_never_copies_templates(monkeypatch, tmp_path):
+    categories = [FakeCategory("Trading", repos(2))]
+
+    class FakeUpdate:
+        PER_PAGE = 100
+
+        class UpdateError(Exception):
+            pass
+
+        @staticmethod
+        def fetch_repos(user):
+            return categories[0].repos
+
+        @staticmethod
+        def api_get(path):
+            return [{"name": r.name, "homepage": "", "has_pages": False} for r in categories[0].repos]
+
+        @staticmethod
+        def load_categories():
+            return {}
+
+        @staticmethod
+        def categorize(repos_, cfg):
+            return categories
+
+        @staticmethod
+        def top_repos(repos_):
+            return repos_[:1]
+
+    monkeypatch.setattr(build, "load_pages_config", lambda: config(Trading="trading"))
+    monkeypatch.setattr(build, "fetch_posts", lambda: [])
+    out = tmp_path / "site"
+
+    build.build(FakeUpdate, out)
+
+    assert (out / "index.html").is_file()
+    assert (out / "projects" / "index.html").is_file()
+    assert (out / "projects" / "trading" / "index.html").is_file()
+    assert not list(out.glob("*.template.html"))
+    assert (out / "style.css").is_file()
+
+
+def test_a_homepage_that_is_the_docs_site_is_not_linked_twice():
+    extras = build.Extras(homepage="https://psyb0t.github.io/x", has_pages=True)
+
+    assert build.repo_links(FakeRepo("x"), extras) == [
+        ("Repo", "https://github.com/psyb0t/x"),
+        ("Docs", "https://psyb0t.github.io/x/"),
+    ]
+
+
+def test_placeholders_with_digits_are_filled():
+    categories = [FakeCategory("Trading", repos(1))]
+    pages = build.plan_pages(categories, config(Trading="trading"))
+
+    html = build.render_list_page(pages.categories["Trading"], pages, {}, BUILT)
+
+    assert "<h1>Trading page</h1>" in html
+    assert "{{" not in html

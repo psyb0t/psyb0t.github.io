@@ -5,6 +5,8 @@ scripts/update.py and categories.json, the same code and data that regenerate
 the profile README, so both pages always show the same projects. This script
 only adds what the README does not have: docs and blog links per repo, the
 latest blog posts, and the files search engines read (sitemap.xml, robots.txt).
+pages.json adds a page per category under /projects/, so each topic has its
+own URL and every project sits on exactly one of those pages.
 
 Reads GITHUB_TOKEN when set. Usage:
   python3 scripts/build.py --profile-dir ../psyb0t --out _site
@@ -34,7 +36,10 @@ logger = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_DIR = ROOT / "static"
 TEMPLATE = ROOT / "static" / "index.template.html"
-PLACEHOLDER = re.compile(r"\{\{([a-z_]+)\}\}")
+LIST_TEMPLATE = ROOT / "static" / "list.template.html"
+TEMPLATE_SUFFIX = ".template.html"
+PAGES_CONFIG = ROOT / "pages.json"
+PLACEHOLDER = re.compile(r"\{\{([a-z0-9_]+)\}\}")
 
 USER = "psyb0t"
 SITE_URL = "https://psyb0t.github.io/"
@@ -55,6 +60,14 @@ SUMMARY = (
 SITEMAP_INDEX = "sitemap.xml"
 SITEMAP_ROOT = "sitemap-root.xml"
 SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
+
+# Category pages live under /projects/ because project docs sites
+# already own /<repo>/. The home page shows this many repos per category that
+# has its own page, then links to it.
+PROJECTS_DIR = "projects"
+HOME_ROWS = 5
+DESCRIPTION_MIN = 50
+DESCRIPTION_MAX = 170
 
 PERSON = {
     "name": "Ciprian Mandache",
@@ -81,6 +94,34 @@ class Extras:
 
     homepage: str
     has_pages: bool
+
+
+@dataclass
+class ListPage:
+    """One category page under /projects/<slug>/."""
+
+    slug: str
+    title: str
+    description: str
+    intro: str
+    repos: list[Any]
+
+    @property
+    def url(self) -> str:
+        return f"{SITE_URL}{PROJECTS_DIR}/{self.slug}/"
+
+
+@dataclass
+class Pages:
+    """The /projects/ pages, keyed by category title, in category order."""
+
+    categories: dict[str, ListPage]
+
+    def all(self) -> list[ListPage]:
+        return list(self.categories.values())
+
+
+NO_PAGES = Pages(categories={})
 
 
 @dataclass
@@ -146,6 +187,53 @@ def parse_feed(body: bytes, limit: int) -> list[Post]:
     return posts
 
 
+def load_pages_config(path: Path = PAGES_CONFIG) -> dict[str, Any]:
+    try:
+        config: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as err:
+        raise BuildError(f"read {path.name}") from err
+    return config
+
+
+def check_page_text(slug: str, description: str) -> None:
+    """Every page names me in its description and fits the snippet length."""
+    if not DESCRIPTION_MIN <= len(description) <= DESCRIPTION_MAX:
+        raise BuildError(f"{slug}: description is {len(description)} characters")
+    if PERSON["name"] not in description:
+        raise BuildError(f"{slug}: description does not name {PERSON['name']}")
+
+
+def plan_pages(categories: list[Any], config: dict[str, Any]) -> Pages:
+    """A page for every configured category with at least `min_repos` repos. A
+    category without an entry in pages.json is skipped with a warning, so a new
+    category in the profile repo never breaks the scheduled build."""
+    min_repos = int(config.get("min_repos", 1))
+    category_config: dict[str, dict[str, str]] = config.get("categories", {})
+    by_title: dict[str, ListPage] = {}
+    for category in categories:
+        entry = category_config.get(category.title)
+        if entry is None:
+            logger.warning("category without a page", extra={"category": category.title})
+            continue
+        if len(category.repos) < min_repos:
+            continue
+        by_title[category.title] = ListPage(
+            slug=entry["slug"],
+            title=entry["title"],
+            description=entry["description"],
+            intro=entry["intro"],
+            repos=category.repos,
+        )
+
+    pages = Pages(categories=by_title)
+    slugs = [p.slug for p in pages.all()]
+    if len(slugs) != len(set(slugs)):
+        raise BuildError(f"duplicate page slugs in {PAGES_CONFIG.name}: {sorted(slugs)}")
+    for page in pages.all():
+        check_page_text(page.slug, page.description)
+    return pages
+
+
 def docs_url(name: str) -> str:
     return f"{SITE_URL}{name}/"
 
@@ -177,7 +265,8 @@ def repo_links(repo: Any, extras: Extras | None) -> list[tuple[str, str]]:
         links.append(("Docs", docs_url(repo.name)))
     if BLOG_HOST in extras.homepage:
         links.append(("Blog post", extras.homepage))
-    elif extras.homepage:
+    elif extras.homepage and extras.homepage.rstrip("/") != docs_url(repo.name).rstrip("/"):
+        # A homepage that is the docs site is already linked as Docs.
         links.append(("Website", extras.homepage))
     return links
 
@@ -232,18 +321,34 @@ def render_row(repo: Any, extras: Extras | None) -> str:
     )
 
 
-def render_categories(categories: list[Any], extras: dict[str, Extras]) -> tuple[str, str]:
+def render_rows(repos: list[Any], extras: dict[str, Extras]) -> str:
+    return "".join(render_row(r, extras.get(r.name)) for r in repos)
+
+
+def render_categories(
+    categories: list[Any], extras: dict[str, Extras], pages: Pages = NO_PAGES
+) -> tuple[str, str]:
     nav = "".join(
         f'<li><a href="#{slug(c.title)}">{esc(c.title)}</a> <span class="count">{len(c.repos)}</span></li>'
         for c in categories
     )
-    sections = "".join(
-        f'<section class="category" id="{slug(c.title)}"><h3>{esc(c.title)}</h3><ul class="rows">'
-        + "".join(render_row(r, extras.get(r.name)) for r in c.repos)
-        + "</ul></section>"
-        for c in categories
-    )
-    return nav, sections
+    sections = []
+    for c in categories:
+        page = pages.categories.get(c.title)
+        heading = f'<a href="{esc(page.url)}">{esc(c.title)}</a>' if page else esc(c.title)
+        shown = c.repos[:HOME_ROWS] if page else c.repos
+        more = (
+            f'<p class="more"><a href="{esc(page.url)}">All {len(c.repos)} projects: '
+            f"{esc(page.title)}</a></p>"
+            if page and len(c.repos) > len(shown)
+            else ""
+        )
+        sections.append(
+            f'<section class="category" id="{slug(c.title)}"><h3>{heading}</h3><ul class="rows">'
+            + render_rows(shown, extras)
+            + f"</ul>{more}</section>"
+        )
+    return nav, "".join(sections)
 
 
 def render_posts(posts: list[Post]) -> str:
@@ -261,30 +366,106 @@ def render_posts(posts: list[Post]) -> str:
     )
 
 
-def json_ld() -> str:
-    data = {
-        "@context": "https://schema.org",
-        "@graph": [
-            {
-                "@type": "Person",
-                "@id": f"{SITE_URL}#person",
-                "name": PERSON["name"],
-                "alternateName": PERSON["handle"],
-                "url": SITE_URL,
-                "email": f"mailto:{PERSON['email']}",
-                "sameAs": [f"https://github.com/{USER}", BLOG_URL],
-            },
-            {
-                "@type": "WebSite",
-                "@id": f"{SITE_URL}#website",
-                "url": SITE_URL,
-                "name": f"{PERSON['name']} ({PERSON['handle']}): open source software",
-                "author": {"@id": f"{SITE_URL}#person"},
-            },
-        ],
-    }
+PERSON_ID = f"{SITE_URL}#person"
+WEBSITE_ID = f"{SITE_URL}#website"
+BYLINE = f"{PERSON['name']} ({PERSON['handle']})"
+
+
+def person_and_site() -> list[dict[str, Any]]:
+    return [
+        {
+            "@type": "Person",
+            "@id": PERSON_ID,
+            "name": PERSON["name"],
+            "alternateName": PERSON["handle"],
+            "url": SITE_URL,
+            "email": f"mailto:{PERSON['email']}",
+            "sameAs": [f"https://github.com/{USER}", BLOG_URL],
+        },
+        {
+            "@type": "WebSite",
+            "@id": WEBSITE_ID,
+            "url": SITE_URL,
+            "name": f"{BYLINE}: open source software",
+            "author": {"@id": PERSON_ID},
+        },
+    ]
+
+
+def dump_json_ld(graph: list[dict[str, Any]]) -> str:
+    data = {"@context": "https://schema.org", "@graph": graph}
     # A "</" inside the JSON would close the script element early.
     return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+def json_ld() -> str:
+    return dump_json_ld(person_and_site())
+
+
+def breadcrumbs(trail: list[tuple[str, str]]) -> dict[str, Any]:
+    return {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": i, "name": name, "item": url}
+            for i, (name, url) in enumerate(trail, start=1)
+        ],
+    }
+
+
+def list_json_ld(page: ListPage, trail: list[tuple[str, str]]) -> str:
+    collection = {
+        "@type": "CollectionPage",
+        "@id": f"{page.url}#page",
+        "url": page.url,
+        "name": f"{page.title} by {BYLINE}",
+        "description": page.description,
+        "isPartOf": {"@id": WEBSITE_ID},
+        "author": {"@id": PERSON_ID},
+        "mainEntity": {
+            "@type": "ItemList",
+            "numberOfItems": len(page.repos),
+            "itemListElement": [
+                {
+                    "@type": "ListItem",
+                    "position": i,
+                    "item": {
+                        "@type": "SoftwareSourceCode",
+                        "name": r.name,
+                        "url": r.url,
+                        "codeRepository": r.url,
+                        **({"description": r.description} if r.description else {}),
+                        **({"programmingLanguage": r.language} if r.language else {}),
+                        "author": {"@id": PERSON_ID},
+                    },
+                }
+                for i, r in enumerate(page.repos, start=1)
+            ],
+        },
+    }
+    return dump_json_ld([*person_and_site(), collection, breadcrumbs(trail)])
+
+
+def index_json_ld(pages: Pages, url: str, description: str, trail: list[tuple[str, str]]) -> str:
+    collection = {
+        "@type": "CollectionPage",
+        "@id": f"{url}#page",
+        "url": url,
+        "name": f"Projects by {BYLINE}",
+        "description": description,
+        "isPartOf": {"@id": WEBSITE_ID},
+        "author": {"@id": PERSON_ID},
+        "hasPart": [{"@type": "CollectionPage", "url": p.url, "name": p.title} for p in pages.all()],
+    }
+    return dump_json_ld([*person_and_site(), collection, breadcrumbs(trail)])
+
+
+def fill(template_path: Path, values: dict[str, str]) -> str:
+    template = template_path.read_text(encoding="utf-8")
+    missing = set(PLACEHOLDER.findall(template)) - values.keys()
+    if missing:
+        raise BuildError(f"template placeholders without a value: {sorted(missing)}")
+    # One pass, so repo text that happens to contain {{...}} is left alone.
+    return PLACEHOLDER.sub(lambda m: values[m.group(1)], template)
 
 
 def render_page(
@@ -293,10 +474,11 @@ def render_page(
     extras: dict[str, Extras],
     posts: list[Post],
     built: dt.datetime,
+    pages: Pages = NO_PAGES,
 ) -> str:
     projects = sum(len(c.repos) for c in categories)
     stars = sum(r.stars for c in categories for r in c.repos)
-    nav, sections = render_categories(categories, extras)
+    nav, sections = render_categories(categories, extras, pages)
     values = {
         "json_ld": json_ld(),
         "links": "".join(f'<li><a href="{esc(url)}">{esc(label)}</a></li>' for label, url in LINKS),
@@ -310,21 +492,109 @@ def render_page(
         "built": built.strftime("%Y-%m-%d %H:%M UTC"),
         "built_iso": built.isoformat(),
     }
-    template = TEMPLATE.read_text(encoding="utf-8")
-    missing = set(PLACEHOLDER.findall(template)) - values.keys()
-    if missing:
-        raise BuildError(f"template placeholders without a value: {sorted(missing)}")
-    # One pass, so repo text that happens to contain {{...}} is left alone.
-    return PLACEHOLDER.sub(lambda m: values[m.group(1)], template)
+    return fill(TEMPLATE, values)
 
 
-def render_sitemaps(doc_sitemaps: list[str], built: dt.datetime) -> tuple[str, str]:
+PROJECTS_URL = f"{SITE_URL}{PROJECTS_DIR}/"
+PROJECTS_DESCRIPTION = (
+    f"Every open source project by {BYLINE}, one page per topic: AI coding agents, "
+    "self-hosted services, trading APIs, Go libraries and more."
+)
+
+
+def render_related(pages: Pages, current: str = "") -> str:
+    items = "".join(
+        f'<li><a href="{esc(p.url)}">{esc(p.title)}</a> <span class="count">{len(p.repos)}</span></li>'
+        for p in pages.all()
+        if p.slug != current
+    )
+    return (
+        '<section id="related"><h2>More projects by me</h2>'
+        f'<ul class="category-nav">{items}</ul>'
+        f'<p><a href="{SITE_URL}">Back to {esc(BYLINE)}</a></p></section>'
+    )
+
+
+def render_breadcrumb(trail: list[tuple[str, str]]) -> str:
+    links = [f'<a href="{esc(url)}">{esc(name)}</a>' for name, url in trail[:-1]]
+    links.append(f'<span aria-current="page">{esc(trail[-1][0])}</span>')
+    return f'<nav class="breadcrumb" aria-label="Breadcrumb">{" / ".join(links)}</nav>'
+
+
+def list_values(
+    title: str,
+    description: str,
+    url: str,
+    json_ld_text: str,
+    trail: list[tuple[str, str]],
+    built: dt.datetime,
+) -> dict[str, str]:
+    return {
+        "title_tag": esc(f"{title} by {BYLINE}"),
+        "h1": esc(title),
+        "description": esc(description),
+        "canonical": esc(url),
+        "json_ld": json_ld_text,
+        "breadcrumb": render_breadcrumb(trail),
+        "byline": f'Open source projects by <a href="{SITE_URL}">{esc(BYLINE)}</a>.',
+        "built": built.strftime("%Y-%m-%d %H:%M UTC"),
+        "built_iso": built.isoformat(),
+    }
+
+
+def render_list_page(page: ListPage, pages: Pages, extras: dict[str, Extras], built: dt.datetime) -> str:
+    trail = [(BYLINE, SITE_URL), ("Projects", PROJECTS_URL), (page.title, page.url)]
+    stars = sum(r.stars for r in page.repos)
+    body = (
+        f'<p class="stats">{len(page.repos)} projects, {stars} stars between them.</p>'
+        f'<ul class="rows">{render_rows(page.repos, extras)}</ul>'
+    )
+    values = list_values(page.title, page.description, page.url, list_json_ld(page, trail), trail, built)
+    values |= {
+        "intro": f"<p>{esc(page.intro)}</p>",
+        "body": body,
+        "related": render_related(pages, page.slug),
+    }
+    return fill(LIST_TEMPLATE, values)
+
+
+def render_projects_index(pages: Pages, built: dt.datetime) -> str:
+    trail = [(BYLINE, SITE_URL), ("Projects", PROJECTS_URL)]
+
+    rows = "".join(
+        f'<li><div class="row-head"><a class="name" href="{esc(p.url)}">{esc(p.title)}</a>'
+        f'<span class="facts"><span>{len(p.repos)} {"project" if len(p.repos) == 1 else "projects"}</span>'
+        f"</span></div><p>{esc(p.description)}</p></li>"
+        for p in pages.all()
+    )
+
+    values = list_values(
+        "Projects",
+        PROJECTS_DESCRIPTION,
+        PROJECTS_URL,
+        index_json_ld(pages, PROJECTS_URL, PROJECTS_DESCRIPTION, trail),
+        trail,
+        built,
+    )
+    values |= {
+        "intro": (
+            "<p>Every public project I maintain, one page per topic. "
+            f'The <a href="{SITE_URL}">home page</a> has the most starred ones and my latest blog posts.</p>'
+        ),
+        "body": f'<ul class="rows">{rows}</ul>',
+        "related": "",
+    }
+    return fill(LIST_TEMPLATE, values)
+
+
+def render_sitemaps(doc_sitemaps: list[str], built: dt.datetime, pages: Pages = NO_PAGES) -> tuple[str, str]:
     lastmod = built.date().isoformat()
+    urls = [SITE_URL, *([PROJECTS_URL] if pages.all() else []), *(p.url for p in pages.all())]
     root = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<urlset xmlns="{SITEMAP_NS}">\n'
-        f"  <url><loc>{SITE_URL}</loc><lastmod>{lastmod}</lastmod></url>\n"
-        "</urlset>\n"
+        + "".join(f"  <url><loc>{esc(url)}</loc><lastmod>{lastmod}</lastmod></url>\n" for url in urls)
+        + "</urlset>\n"
     )
     entries = [f"{SITE_URL}{SITEMAP_ROOT}", *doc_sitemaps]
     index = (
@@ -337,7 +607,11 @@ def render_sitemaps(doc_sitemaps: list[str], built: dt.datetime) -> tuple[str, s
 
 
 def render_llms(
-    categories: list[Any], extras: dict[str, Extras], posts: list[Post], doc_llms: list[str]
+    categories: list[Any],
+    extras: dict[str, Extras],
+    posts: list[Post],
+    doc_llms: list[str],
+    pages: Pages = NO_PAGES,
 ) -> str:
     """The llms.txt index: who I am, where to find me, and every project by category."""
     have_llms = set(doc_llms)
@@ -358,6 +632,9 @@ def render_llms(
     if posts:
         lines += ["", "## Latest blog posts", ""]
         lines += [f"- [{p.title}]({p.url}): {p.published.isoformat()}" for p in posts]
+    if pages.all():
+        lines += ["", "## Project pages", ""]
+        lines += [f"- [{p.title}]({p.url}): {p.description}" for p in pages.all()]
     for category in categories:
         lines += ["", f"## {category.title}", ""]
         for repo in category.repos:
@@ -385,6 +662,7 @@ def build(update: ModuleType, out: Path) -> None:
     except update.UpdateError as err:
         raise BuildError("read repos from the GitHub API") from err
     top = update.top_repos(repos)
+    pages = plan_pages(categories, load_pages_config())
     posts = fetch_posts()
     listed = {r.name for c in categories for r in c.repos}
     doc_sites = sorted(n for n, e in extras.items() if e.has_pages and n in listed)
@@ -392,8 +670,8 @@ def build(update: ModuleType, out: Path) -> None:
     doc_llms = live_doc_files(doc_sites, LLMS_TXT)
     built = dt.datetime.now(dt.UTC).replace(microsecond=0)
 
-    page = render_page(top, categories, extras, posts, built)
-    index, root = render_sitemaps(doc_sitemaps, built)
+    page = render_page(top, categories, extras, posts, built, pages)
+    index, root = render_sitemaps(doc_sitemaps, built, pages)
 
     if out.exists():
         shutil.rmtree(out)
@@ -402,9 +680,17 @@ def build(update: ModuleType, out: Path) -> None:
     (out / SITEMAP_INDEX).write_text(index, encoding="utf-8")
     (out / SITEMAP_ROOT).write_text(root, encoding="utf-8")
     (out / "robots.txt").write_text(robots_txt(), encoding="utf-8")
-    (out / LLMS_TXT).write_text(render_llms(categories, extras, posts, doc_llms), encoding="utf-8")
+    (out / LLMS_TXT).write_text(render_llms(categories, extras, posts, doc_llms, pages), encoding="utf-8")
+    projects = out / PROJECTS_DIR
+    projects.mkdir()
+    (projects / "index.html").write_text(render_projects_index(pages, built), encoding="utf-8")
+    for list_page in pages.all():
+        (projects / list_page.slug).mkdir()
+        (projects / list_page.slug / "index.html").write_text(
+            render_list_page(list_page, pages, extras, built), encoding="utf-8"
+        )
     for path in STATIC_DIR.iterdir():
-        if path.name != TEMPLATE.name:
+        if not path.name.endswith(TEMPLATE_SUFFIX):
             shutil.copy2(path, out / path.name)
     logger.info(
         "site built",
@@ -412,6 +698,7 @@ def build(update: ModuleType, out: Path) -> None:
             "out": str(out),
             "projects": len(listed),
             "top": len(top),
+            "pages": len(pages.all()),
             "posts": len(posts),
             "doc_sitemaps": len(doc_sitemaps),
             "doc_llms": len(doc_llms),

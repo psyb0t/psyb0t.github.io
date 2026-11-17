@@ -1,0 +1,71 @@
+{
+  "min_repos": 1,
+  "categories": {
+    "AI coding agents": {
+      "slug": "ai-coding-agents",
+      "title": "AI coding agents and tooling",
+      "description": "Open source AI coding agent projects by Ciprian Mandache (psyb0t): the agents, the runtimes and APIs that run them unattended, and their plugins and skills.",
+      "intro": "These are the projects I build around AI coding agents: the agents themselves, the runtimes and APIs that keep them running unattended, and the plugins and skills that extend them. Some run natively and some in Docker."
+    },
+    "Self-hosted AI services": {
+      "slug": "self-hosted-ai",
+      "title": "Self-hosted AI services",
+      "description": "Self-hosted AI services by Ciprian Mandache (psyb0t) that run models on your own hardware and expose them over APIs instead of a paid cloud service.",
+      "intro": "These are AI services I run on my own hardware instead of paying a provider per call, plus the chat apps and base images around them. Most ship as a Docker image with an HTTP API, and many also serve MCP so agents can call them as tools."
+    },
+    "Browser and device automation": {
+      "slug": "browser-automation",
+      "title": "Browser and device automation",
+      "description": "Browser and device automation by Ciprian Mandache (psyb0t): open source tools for driving browsers, Linux desktops, phones and emulators from code and AI agents.",
+      "intro": "These projects drive browsers, Linux desktops, phones and emulators from code, for scripts and AI agents that need to operate a real interface instead of calling an API."
+    },
+    "Trading": {
+      "slug": "trading",
+      "title": "Trading APIs and tools",
+      "description": "Open source trading tools by Ciprian Mandache (psyb0t): HTTP and MCP APIs for brokers and trading platforms, market data analysis and build tools.",
+      "intro": "This is the trading infrastructure I run: HTTP and MCP APIs in front of brokers and trading platforms, services that analyze market data, and tools for building trading code."
+    },
+    "Code generation": {
+      "slug": "code-generation",
+      "title": "Code generation tools",
+      "description": "Code generation tools by Ciprian Mandache (psyb0t): open source generators that turn API specifications into typed code and keep the two in sync.",
+      "intro": "These tools read an API specification, such as OpenAPI or AsyncAPI, and generate typed code from it, so the code changes when the specification does instead of drifting away from it."
+    },
+    "Go libraries and tooling": {
+      "slug": "go-libraries",
+      "title": "Go libraries and tooling",
+      "description": "Open source Go libraries and developer tools by Ciprian Mandache (psyb0t), the building blocks my services are written on, split out for reuse.",
+      "intro": "These are the Go libraries and developer tools my services are built on, split out so other projects can use them too."
+    },
+    "Radio and hardware": {
+      "slug": "radio-and-hardware",
+      "title": "Radio and hardware projects",
+      "description": "Radio and hardware projects by Ciprian Mandache (psyb0t): open source software for radio transmitters and receivers, aircraft tracking and USB-connected devices.",
+      "intro": "This is the software I write for physical things: radio transmitters and receivers, aircraft tracking, single-board computers and machines connected over USB."
+    },
+    "Self-hosted services and MCP servers": {
+      "slug": "self-hosted-services",
+      "title": "Self-hosted services",
+      "description": "Self-hosted services by Ciprian Mandache (psyb0t) that put things you already run, such as mail, messaging and storage, behind HTTP and MCP APIs.",
+      "intro": "These services sit in front of things you already have and give them an API that scripts and AI agents can use. Most run as one Docker container with an HTTP API, and many also serve MCP."
+    },
+    "Privacy, offline and networking": {
+      "slug": "privacy-and-networking",
+      "title": "Privacy, offline and networking tools",
+      "description": "Privacy, offline and networking tools by Ciprian Mandache (psyb0t): containers for VPN routing, Tor access, proxies and working without an internet connection.",
+      "intro": "These containers keep traffic private, route it through a VPN, Tor or a proxy, or keep things working without an internet connection."
+    },
+    "Sysadmin and DevOps": {
+      "slug": "sysadmin-and-devops",
+      "title": "Sysadmin and DevOps tools",
+      "description": "Sysadmin and DevOps tools by Ciprian Mandache (psyb0t): open source scripts and workflows for mounts, tunnels, process supervision, Git hooks and CI/CD.",
+      "intro": "Small tools for the routine work of running machines and shipping code: mounts, tunnels, process supervision, Git hooks and CI/CD workflows."
+    },
+    "API clients": {
+      "slug": "go-api-clients",
+      "title": "Go API clients",
+      "description": "Unofficial Go API clients by Ciprian Mandache (psyb0t), generated from the OpenAPI and AsyncAPI specs that providers publish and regenerated when they change.",
+      "intro": "These are unofficial Go clients for other people's APIs, generated from the OpenAPI or AsyncAPI specification each provider publishes and regenerated when that specification changes. Where a provider documents a WebSocket API, the client includes a typed WebSocket package."
+    }
+  }
+}

@@ -81,6 +81,11 @@ h3 { font-size: 1.15rem; margin: 0; }
 .posts li { padding: 0.35rem 0; }
 .posts time { color: var(--overlay); font-variant-numeric: tabular-nums; margin-right: 0.5rem; }
 
+.more { margin: 0.5rem 0 0; font-size: 0.95rem; }
+.breadcrumb { color: var(--overlay); font-size: 0.9rem; margin-bottom: 0.25rem; overflow-wrap: anywhere; }
+#intro > p:first-child { margin-top: 2rem; }
+#related { margin-top: 1rem; }
+
 footer { margin-top: 3rem; padding-bottom: 2rem; color: var(--overlay); font-size: 0.9rem; border-top: 1px solid var(--surface0); }
 
 @media (max-width: 30rem) {
